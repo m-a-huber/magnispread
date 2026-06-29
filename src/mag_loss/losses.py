@@ -1,9 +1,9 @@
 import torch.nn as nn
 
-from .functional import magnitude_loss
+from .functional import mag_loss
 
 
-class MagnitudeLoss(nn.Module):
+class MagLoss(nn.Module):
     def __init__(
         self,
         metric: str = "euclidean",
@@ -20,7 +20,7 @@ class MagnitudeLoss(nn.Module):
         self.jitter = jitter
 
     def forward(self, pred):
-        return magnitude_loss(
+        return mag_loss(
             pred,
             metric=self.metric,
             t=self.t,

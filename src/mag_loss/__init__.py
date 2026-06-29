@@ -1,4 +1,4 @@
-from .functional import magnitude_loss
-from .losses import MagnitudeLoss
+from .functional import mag_loss
+from .losses import MagLoss
 
-__all__ = ["MagnitudeLoss", "magnitude_loss"]
+__all__ = ["MagLoss", "mag_loss"]

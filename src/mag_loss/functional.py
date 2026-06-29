@@ -3,7 +3,7 @@ import torch
 from ._metrics import pairwise_cosine_distance
 
 
-def magnitude_loss(
+def mag_loss(
     X: torch.Tensor,
     metric: str = "euclidean",
     t: float = 1.0,
@@ -11,6 +11,25 @@ def magnitude_loss(
     symmetrize: bool = True,
     jitter: float = 1e-6,
 ) -> torch.Tensor:
+    if X.ndim != 2:
+        raise ValueError(
+            f"`X` must be a 2D tensor, got shape {tuple(X.shape)}"
+        )
+
+    if t <= 0:
+        raise ValueError(f"`t` must be > 0, got {t}")
+
+    if jitter < 0:
+        raise ValueError(f"`jitter` must be >= 0, got {jitter}")
+
+    if metric not in {"euclidean", "cosine"}:
+        raise ValueError(
+            f"`metric` must be either 'euclidean' or 'cosine', got {metric}"
+        )
+
+    if not X.is_floating_point():
+        X = X.to(dtype=torch.float32)
+
     if use_double_precision:
         X_kernel = X.to(dtype=torch.float64)
     else:
@@ -20,13 +39,9 @@ def magnitude_loss(
         similarity_matrix = torch.exp(
             -t * torch.cdist(X_kernel, X_kernel, p=2)
         )
-    elif metric == "cosine":
+    else:
         similarity_matrix = torch.exp(
             -t * pairwise_cosine_distance(X_kernel, X_kernel)
-        )
-    else:
-        raise ValueError(
-            f"`metric` must be either 'euclidean' or 'cosine', got {metric}"
         )
 
     if symmetrize:
