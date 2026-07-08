@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from mag_loss.functional import mag_loss
+from mag_torch.functional import mag_loss
 
 
 def test_mag_loss_returns_scalar_and_backward():

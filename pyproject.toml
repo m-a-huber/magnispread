@@ -1,5 +1,5 @@
 [project]
-name = "mag-loss"
+name = "mag-torch"
 version = "0.1.0"
 description = "PyTorch-implementation of metric space magnitude."
 readme = "README.md"
@@ -23,5 +23,5 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/m-a-huber/mag_loss"
-Issues = "https://github.com/m-a-huber/mag_loss/issues"
+Homepage = "https://github.com/m-a-huber/mag_torch"
+Issues = "https://github.com/m-a-huber/mag_torch/issues"

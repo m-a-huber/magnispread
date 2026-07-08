@@ -1,6 +1,6 @@
-# mag-loss
+# mag-torch
 
-`mag-loss` provides a magnitude-based PyTorch loss that builds a similarity
+`mag-torch` provides a magnitude-based PyTorch loss that builds a similarity
 matrix $\zeta$ from pairwise distances and returns:
 
 $$
@@ -15,7 +15,7 @@ Functional API:
 
 ```python
 import torch
-from mag_loss import mag_loss
+from mag_torch import mag_loss
 
 X = torch.randn(16, 64, requires_grad=True)
 loss = mag_loss(
@@ -30,7 +30,7 @@ Module API:
 
 ```python
 import torch
-from mag_loss import MagLoss
+from mag_torch import MagLoss
 
 criterion = MagLoss(
     metric="cosine",
