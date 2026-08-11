@@ -1,7 +1,7 @@
 [project]
-name = "mag-torch"
+name = "magnispread"
 version = "0.1.0"
-description = "PyTorch-implementation of metric space magnitude."
+description = "PyTorch-implementation of metric space magnitude and spread."
 readme = "README.md"
 authors = [
     { name = "m-a-huber" }
@@ -23,5 +23,5 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/m-a-huber/mag_torch"
-Issues = "https://github.com/m-a-huber/mag_torch/issues"
+Homepage = "https://github.com/m-a-huber/magnispread"
+Issues = "https://github.com/m-a-huber/magnispread/issues"

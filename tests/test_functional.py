@@ -1,12 +1,13 @@
 import pytest
 import torch
 
-from mag_torch.functional import mag_loss
+from magnispread.functional import magnitude, spread
+from magnispread.metrics import pairwise_cosine_distance
 
 
-def test_mag_loss_returns_scalar_and_backward():
+def test_magnitude_returns_scalar_and_backward():
     X = torch.randn(8, 4, requires_grad=True)
-    loss = mag_loss(X, metric="euclidean")
+    loss = magnitude(X, metric="euclidean")
 
     assert loss.ndim == 0
     loss.backward()
@@ -14,31 +15,161 @@ def test_mag_loss_returns_scalar_and_backward():
     assert torch.isfinite(X.grad).all()
 
 
-def test_mag_loss_supports_cosine_metric():
+def test_magnitude_supports_cosine_metric():
     X = torch.randn(10, 6, requires_grad=True)
-    loss = mag_loss(X, metric="cosine", t=0.5)
+    loss = magnitude(X, metric="cosine", t=0.5)
 
     assert torch.isfinite(loss)
     loss.backward()
     assert X.grad is not None
 
 
-def test_mag_loss_rejects_invalid_metric():
+def test_magnitude_supports_inverse_solver():
+    X = torch.randn(6, 3, requires_grad=True)
+    loss = magnitude(X, metric="euclidean", solver="inverse", jitter=1e-4)
+
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert X.grad is not None
+
+
+def test_magnitude_supports_precomputed_distances():
+    X = torch.randn(7, 5)
+    distances = torch.cdist(X, X, p=2)
+
+    loss_from_points = magnitude(X, metric="euclidean", t=0.75)
+    loss_from_distances = magnitude(distances, metric="precomputed", t=0.75)
+
+    assert torch.allclose(loss_from_points, loss_from_distances)
+
+
+def test_magnitude_supports_precomputed_cosine_distances():
+    X = torch.randn(7, 5)
+    distances = pairwise_cosine_distance(X, X)
+
+    loss_from_points = magnitude(X, metric="cosine", t=0.75)
+    loss_from_distances = magnitude(distances, metric="precomputed", t=0.75)
+
+    assert torch.allclose(loss_from_points, loss_from_distances)
+
+
+def test_magnitude_backward_with_precomputed_distances():
+    distances = torch.zeros(6, 6, requires_grad=True)
+    loss = magnitude(distances, metric="precomputed", jitter=1e-4)
+
+    loss.backward()
+    assert distances.grad is not None
+    assert torch.isfinite(distances.grad).all()
+
+
+def test_magnitude_rejects_invalid_metric():
     X = torch.randn(4, 3)
     with pytest.raises(ValueError, match="metric"):
-        mag_loss(X, metric="manhattan")
+        magnitude(X, metric="manhattan")
 
 
-def test_mag_loss_requires_2d_input():
+def test_magnitude_requires_2d_input():
     X = torch.randn(4, 3, 2)
     with pytest.raises(ValueError, match="2D"):
-        mag_loss(X)
+        magnitude(X)
 
 
-def test_mag_loss_validates_t_and_jitter():
+def test_magnitude_requires_square_precomputed_input():
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="square"):
+        magnitude(X, metric="precomputed")
+
+
+def test_magnitude_rejects_invalid_solver():
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="solver"):
+        magnitude(X, solver="svd")
+
+
+def test_magnitude_validates_t_and_jitter():
     X = torch.randn(4, 3)
     with pytest.raises(ValueError, match="`t`"):
-        mag_loss(X, t=0)
+        magnitude(X, t=0)
 
     with pytest.raises(ValueError, match="`jitter`"):
-        mag_loss(X, jitter=-1e-6)
+        magnitude(X, jitter=-1e-6)
+
+
+def test_spread_returns_scalar_and_backward():
+    X = torch.randn(8, 4, requires_grad=True)
+    loss = spread(X, metric="euclidean")
+
+    assert loss.ndim == 0
+    loss.backward()
+    assert X.grad is not None
+    assert torch.isfinite(X.grad).all()
+
+
+def test_spread_supports_cosine_metric():
+    X = torch.randn(10, 6, requires_grad=True)
+    loss = spread(X, metric="cosine", t=0.5)
+
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert X.grad is not None
+
+
+def test_spread_supports_precomputed_distances():
+    X = torch.randn(7, 5)
+    distances = torch.cdist(X, X, p=2)
+
+    loss_from_points = spread(X, metric="euclidean", t=0.75)
+    loss_from_distances = spread(
+        distances,
+        metric="precomputed",
+        t=0.75,
+    )
+
+    assert torch.allclose(loss_from_points, loss_from_distances)
+
+
+def test_spread_supports_precomputed_cosine_distances():
+    X = torch.randn(7, 5)
+    distances = pairwise_cosine_distance(X, X)
+
+    loss_from_points = spread(X, metric="cosine", t=0.75)
+    loss_from_distances = spread(
+        distances,
+        metric="precomputed",
+        t=0.75,
+    )
+
+    assert torch.allclose(loss_from_points, loss_from_distances)
+
+
+def test_spread_backward_with_precomputed_distances():
+    distances = torch.zeros(6, 6, requires_grad=True)
+    loss = spread(distances, metric="precomputed")
+
+    loss.backward()
+    assert distances.grad is not None
+    assert torch.isfinite(distances.grad).all()
+
+
+def test_spread_rejects_invalid_metric():
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="metric"):
+        spread(X, metric="manhattan")
+
+
+def test_spread_requires_2d_input():
+    X = torch.randn(4, 3, 2)
+    with pytest.raises(ValueError, match="2D"):
+        spread(X)
+
+
+def test_spread_requires_square_precomputed_input():
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="square"):
+        spread(X, metric="precomputed")
+
+
+def test_spread_validates_t():
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="`t`"):
+        spread(X, t=0)
