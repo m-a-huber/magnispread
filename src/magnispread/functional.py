@@ -3,12 +3,15 @@ import torch
 from .metrics import pairwise_cosine_distance
 
 
-def _validate_common_inputs(
+def _validate_inputs(
     X: torch.Tensor,
     metric: str,
-    t: float,
+    scale: float,
+    jitter: float | None = None,
+    solver: str | None = None,
 ) -> None:
-    """Validate input constraints shared by `magnitude` and `spread`."""
+    """Validate input arguments."""
+
     if X.ndim != 2:
         raise ValueError(
             f"`X` must be a 2D-tensor, got shape {tuple(X.shape)}"
@@ -26,14 +29,22 @@ def _validate_common_inputs(
             f"`metric='precomputed'`, got shape {tuple(X.shape)}"
         )
 
-    if t <= 0:
-        raise ValueError(f"`t` must be positive, got {t}")
+    if scale <= 0:
+        raise ValueError(f"`scale` must be positive, got {scale}")
+
+    if jitter is not None and jitter < 0:
+        raise ValueError(f"`jitter` must be non-negative, got {jitter}")
+
+    if solver is not None and solver not in {"cholesky", "inverse"}:
+        raise ValueError(
+            f"`solver` must be either 'cholesky' or 'inverse', got {solver}"
+        )
 
 
 def _similarity_matrix_from_input(
     X: torch.Tensor,
     metric: str,
-    t: float,
+    scale: float,
     use_double_precision: bool,
 ) -> torch.Tensor:
     """Build a similarity matrix from validated input."""
@@ -50,18 +61,18 @@ def _similarity_matrix_from_input(
     else:
         distances = X_kernel
 
-    return torch.exp(-t * distances)
+    return torch.exp(-scale * distances)
 
 
 def magnitude(
     X: torch.Tensor,
     metric: str = "euclidean",
-    t: float = 1.0,
+    scale: float = 1.0,
     use_double_precision: bool = True,
     symmetrize: bool = True,
     jitter: float = 1e-6,
     solver: str = "cholesky",
-) -> torch.Tensor:
+) -> torch.Tensor:  # ty: ignore[invalid-return-type]
     """Computes metric space magnitude from a point cloud or from a matrix of
     pairwise distances.
 
@@ -75,7 +86,7 @@ def magnitude(
         Metric to use for computing pairwise distances. If set to
         `"precomputed"`, `X` is assumed to be a square matrix containing
         pairwise distances. Defaults to `"euclidean"`.
-    t : float, optional
+    scale : float, optional
         Scale at which to compute magnitude. Must be positive. Defaults to
         `1.0`.
     use_double_precision : bool, optional
@@ -104,26 +115,25 @@ def magnitude(
     ValueError
         If `metric` is `"precomputed"` and `X` is not square.
     ValueError
-        If `t` is not positive.
+        If `scale` is not positive.
     ValueError
         If `jitter` is negative.
     ValueError
         If `solver` is not `"cholesky"` or `"inverse"`.
     """
-    _validate_common_inputs(X=X, metric=metric, t=t)
 
-    if jitter < 0:
-        raise ValueError(f"`jitter` must be non-negative, got {jitter}")
-
-    if solver not in {"cholesky", "inverse"}:
-        raise ValueError(
-            f"`solver` must be either 'cholesky' or 'inverse', got {solver}"
-        )
+    _validate_inputs(
+        X=X,
+        metric=metric,
+        scale=scale,
+        jitter=jitter,
+        solver=solver,
+    )
 
     similarity_matrix = _similarity_matrix_from_input(
         X,
         metric=metric,
-        t=t,
+        scale=scale,
         use_double_precision=use_double_precision,
     )
 
@@ -154,7 +164,7 @@ def magnitude(
 def spread(
     X: torch.Tensor,
     metric: str = "euclidean",
-    t: float = 1.0,
+    scale: float = 1.0,
     use_double_precision: bool = True,
     symmetrize: bool = True,
 ) -> torch.Tensor:
@@ -171,7 +181,7 @@ def spread(
         Metric to use for computing pairwise distances. If set to
         `"precomputed"`, `X` is assumed to be a square matrix containing
         pairwise distances. Defaults to `"euclidean"`.
-    t : float, optional
+    scale : float, optional
         Scale at which to compute spread. Must be positive. Defaults to
         `1.0`.
     use_double_precision : bool, optional
@@ -194,14 +204,19 @@ def spread(
     ValueError
         If `metric` is `"precomputed"` and `X` is not square.
     ValueError
-        If `t` is not positive.
+        If `scale` is not positive.
     """
-    _validate_common_inputs(X=X, metric=metric, t=t)
+
+    _validate_inputs(
+        X=X,
+        metric=metric,
+        scale=scale,
+    )
 
     similarity_matrix = _similarity_matrix_from_input(
         X,
         metric=metric,
-        t=t,
+        scale=scale,
         use_double_precision=use_double_precision,
     )
 

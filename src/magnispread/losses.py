@@ -10,7 +10,7 @@ class MagLoss(nn.Module):
     def __init__(
         self,
         metric: str = "euclidean",
-        t: float = 1.0,
+        scale: float = 1.0,
         use_double_precision: bool = True,
         symmetrize: bool = True,
         jitter: float = 1e-6,
@@ -18,7 +18,7 @@ class MagLoss(nn.Module):
     ):
         super().__init__()
         self.metric = metric
-        self.t = t
+        self.scale = scale
         self.use_double_precision = use_double_precision
         self.symmetrize = symmetrize
         self.jitter = jitter
@@ -29,7 +29,7 @@ class MagLoss(nn.Module):
         return magnitude(
             pred,
             metric=self.metric,
-            t=self.t,
+            scale=self.scale,
             use_double_precision=self.use_double_precision,
             symmetrize=self.symmetrize,
             jitter=self.jitter,
@@ -44,13 +44,13 @@ class SpreadLoss(nn.Module):
     def __init__(
         self,
         metric: str = "euclidean",
-        t: float = 1.0,
+        scale: float = 1.0,
         use_double_precision: bool = True,
         symmetrize: bool = True,
     ):
         super().__init__()
         self.metric = metric
-        self.t = t
+        self.scale = scale
         self.use_double_precision = use_double_precision
         self.symmetrize = symmetrize
 
@@ -59,7 +59,7 @@ class SpreadLoss(nn.Module):
         return spread(
             pred,
             metric=self.metric,
-            t=self.t,
+            scale=self.scale,
             use_double_precision=self.use_double_precision,
             symmetrize=self.symmetrize,
         )
