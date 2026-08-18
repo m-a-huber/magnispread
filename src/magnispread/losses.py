@@ -11,8 +11,8 @@ class MagLoss(nn.Module):
         self,
         metric: str = "euclidean",
         scale: float = 1.0,
-        use_double_precision: bool = True,
-        symmetrize: bool = True,
+        use_double_precision: bool = False,
+        symmetrize: bool = False,
         jitter: float = 1e-6,
         solver: str = "cholesky",
     ):
@@ -45,8 +45,8 @@ class SpreadLoss(nn.Module):
         self,
         metric: str = "euclidean",
         scale: float = 1.0,
-        use_double_precision: bool = True,
-        symmetrize: bool = True,
+        use_double_precision: bool = False,
+        symmetrize: bool = False,
     ):
         super().__init__()
         self.metric = metric

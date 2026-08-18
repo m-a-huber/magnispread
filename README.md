@@ -89,7 +89,7 @@ The same `metric="precomputed"` mode is available in `MagLoss` and
 - `metric="euclidean"` and `metric="cosine"` expect a point cloud with shape `(n_samples, n_features)`.
 - `metric="precomputed"` expects a square 2D tensor containing pairwise distances.
 - `t` must be positive.
-- The implementation uses double precision and symmetrization for the computation of the similarity matrix $\zeta$ by default for numerical stability. This behavior can be turned off by setting ``use_double_precision=False`` and ``symmetrize=False``, respectively.
+- Numerical stability can be improved by using double precision and symmetrization for the computation of the similarity matrix $\zeta$. This behavior can be turned on by setting ``use_double_precision=True`` and ``symmetrize=True``, respectively.
 - If computation of magnitude fails because of `torch.linalg.cholesky`, increase `jitter` (default value if `1e-6`), or set `solver="inverse"` (default value is `"cholesky"`).
 
 ## References

@@ -52,7 +52,7 @@ def _similarity_matrix_from_input(
     if not X.is_floating_point():
         X = X.to(dtype=torch.float32)
 
-    X_kernel = X.to(dtype=torch.float64) if use_double_precision else X
+    X_kernel = X if not use_double_precision else X.to(dtype=torch.float64)
 
     if metric == "euclidean":
         distances = torch.cdist(X_kernel, X_kernel, p=2)
@@ -68,8 +68,8 @@ def magnitude(
     X: torch.Tensor,
     metric: str = "euclidean",
     scale: float = 1.0,
-    use_double_precision: bool = True,
-    symmetrize: bool = True,
+    use_double_precision: bool = False,
+    symmetrize: bool = False,
     jitter: float = 1e-6,
     solver: str = "cholesky",
 ) -> torch.Tensor:  # ty: ignore[invalid-return-type]
@@ -91,9 +91,9 @@ def magnitude(
         `1.0`.
     use_double_precision : bool, optional
         Whether to use double precision for internal computations. Defaults to
-        `True`.
+        `False`.
     symmetrize : bool, optional
-        Whether to symmetrize the similarity matrix. Defaults to `True`.
+        Whether to symmetrize the similarity matrix. Defaults to `False`.
     jitter : float, optional
         Small constant added to the diagonal of the similarity matrix for
         numerical stability. Defaults to `1e-6`.
@@ -165,8 +165,8 @@ def spread(
     X: torch.Tensor,
     metric: str = "euclidean",
     scale: float = 1.0,
-    use_double_precision: bool = True,
-    symmetrize: bool = True,
+    use_double_precision: bool = False,
+    symmetrize: bool = False,
 ) -> torch.Tensor:
     """Computes metric space spread from a point cloud or from a matrix of
     pairwise distances.
@@ -186,9 +186,9 @@ def spread(
         `1.0`.
     use_double_precision : bool, optional
         Whether to use double precision for internal computations. Defaults to
-        `True`.
+        `False`.
     symmetrize : bool, optional
-        Whether to symmetrize the similarity matrix. Defaults to `True`.
+        Whether to symmetrize the similarity matrix. Defaults to `False`.
 
     Returns
     -------
