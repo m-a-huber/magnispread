@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 
 from .metrics import pairwise_cosine_distance
@@ -35,9 +37,10 @@ def _validate_inputs(
     if jitter is not None and jitter < 0:
         raise ValueError(f"`jitter` must be non-negative, got {jitter}")
 
-    if solver is not None and solver not in {"cholesky", "inverse"}:
+    if solver is not None and solver not in {"auto", "cholesky", "inverse"}:
         raise ValueError(
-            f"`solver` must be either 'cholesky' or 'inverse', got {solver}"
+            "`solver` must be either 'auto', 'cholesky', or 'inverse', got "
+            f"{solver}"
         )
 
 
@@ -71,7 +74,7 @@ def magnitude(
     use_double_precision: bool = False,
     symmetrize: bool = False,
     jitter: float = 1e-6,
-    solver: str = "cholesky",
+    solver: str = "auto",
 ) -> torch.Tensor:  # ty: ignore[invalid-return-type]
     """Computes metric space magnitude from a point cloud or from a matrix of
     pairwise distances.
@@ -98,8 +101,11 @@ def magnitude(
         Small constant added to the diagonal of the similarity matrix for
         numerical stability. Defaults to `1e-6`.
     solver : str, optional
-        Solver to use for computing the magnitude. Must be either `"cholesky"`
-        or `"inverse"`. Defaults to `"cholesky"`.
+        Solver to use for computing the magnitude. Must be either
+        `"auto"`, `"cholesky"`, or `"inverse"`. `"auto"` attempts Cholesky
+        decomposition first and falls back to the direct matrix inverse,
+        emitting a `UserWarning`, if the similarity matrix is not
+        positive-definite. Defaults to `"auto"`.
 
     Returns
     -------
@@ -119,7 +125,7 @@ def magnitude(
     ValueError
         If `jitter` is negative.
     ValueError
-        If `solver` is not `"cholesky"` or `"inverse"`.
+        If `solver` is not `"auto"`, `"cholesky"`, or `"inverse"`.
     """
 
     _validate_inputs(
@@ -147,6 +153,22 @@ def magnitude(
             device=similarity_matrix.device,
         )
 
+    if solver == "auto":
+        L, info = torch.linalg.cholesky_ex(similarity_matrix, upper=False)
+        if info.item() == 0:
+            ones = torch.ones(
+                len(X),
+                1,
+                dtype=similarity_matrix.dtype,
+                device=similarity_matrix.device,
+            )
+            x = torch.linalg.solve_triangular(L, ones, upper=False)
+            return (x.mT @ x).squeeze()
+        warnings.warn(
+            "Cholesky decomposition failed; falling back to solver='inverse'",
+            stacklevel=2,
+        )
+        return torch.linalg.inv(similarity_matrix).sum().squeeze()
     if solver == "cholesky":
         L = torch.linalg.cholesky(similarity_matrix, upper=False)
         ones = torch.ones(

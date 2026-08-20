@@ -33,6 +33,54 @@ def test_magnitude_supports_inverse_solver():
     assert X.grad is not None
 
 
+def test_magnitude_auto_solver_matches_cholesky_when_well_conditioned(recwarn):
+    X = torch.randn(8, 4)
+
+    result_auto = magnitude(X, metric="euclidean", solver="auto")
+    result_cholesky = magnitude(X, metric="euclidean", solver="cholesky")
+
+    assert torch.allclose(result_auto, result_cholesky)
+    assert len(recwarn) == 0
+
+
+def test_magnitude_auto_solver_falls_back_to_inverse_on_cholesky_failure(
+    monkeypatch,
+):
+    X = torch.randn(6, 3)
+    original_cholesky_ex = torch.linalg.cholesky_ex
+
+    def _failing_cholesky_ex(*args, **kwargs):
+        L, info = original_cholesky_ex(*args, **kwargs)
+        return L, torch.ones_like(info)
+
+    monkeypatch.setattr(torch.linalg, "cholesky_ex", _failing_cholesky_ex)
+
+    with pytest.warns(UserWarning, match="falling back"):
+        result_auto = magnitude(X, metric="euclidean", solver="auto")
+
+    result_inverse = magnitude(X, metric="euclidean", solver="inverse")
+
+    assert torch.allclose(result_auto, result_inverse)
+
+
+def test_magnitude_auto_solver_backward_after_fallback(monkeypatch):
+    X = torch.randn(6, 3, requires_grad=True)
+    original_cholesky_ex = torch.linalg.cholesky_ex
+
+    def _failing_cholesky_ex(*args, **kwargs):
+        L, info = original_cholesky_ex(*args, **kwargs)
+        return L, torch.ones_like(info)
+
+    monkeypatch.setattr(torch.linalg, "cholesky_ex", _failing_cholesky_ex)
+
+    with pytest.warns(UserWarning):
+        loss = magnitude(X, metric="euclidean", solver="auto")
+
+    loss.backward()
+    assert X.grad is not None
+    assert torch.isfinite(X.grad).all()
+
+
 def test_magnitude_supports_precomputed_distances():
     X = torch.randn(7, 5)
     distances = torch.cdist(X, X, p=2)

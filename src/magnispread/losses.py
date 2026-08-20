@@ -14,7 +14,7 @@ class MagLoss(nn.Module):
         use_double_precision: bool = False,
         symmetrize: bool = False,
         jitter: float = 1e-6,
-        solver: str = "cholesky",
+        solver: str = "auto",
     ):
         super().__init__()
         self.metric = metric
