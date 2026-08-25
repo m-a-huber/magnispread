@@ -84,6 +84,7 @@ def test_magnitude_auto_solver_backward_after_fallback(monkeypatch):
 def test_magnitude_supports_precomputed_distances():
     X = torch.randn(7, 5)
     distances = torch.cdist(X, X, p=2)
+    distances = distances.fill_diagonal_(0.0)
 
     loss_from_points = magnitude(X, metric="euclidean", scale=0.75)
     loss_from_distances = magnitude(
@@ -96,6 +97,7 @@ def test_magnitude_supports_precomputed_distances():
 def test_magnitude_supports_precomputed_cosine_distances():
     X = torch.randn(7, 5)
     distances = pairwise_cosine_distance(X, X)
+    distances = distances.fill_diagonal_(0.0)
 
     loss_from_points = magnitude(X, metric="cosine", scale=0.75)
     loss_from_distances = magnitude(
@@ -169,6 +171,7 @@ def test_spread_supports_cosine_metric():
 def test_spread_supports_precomputed_distances():
     X = torch.randn(7, 5)
     distances = torch.cdist(X, X, p=2)
+    distances = distances.fill_diagonal_(0.0)
 
     loss_from_points = spread(X, metric="euclidean", scale=0.75)
     loss_from_distances = spread(
@@ -183,6 +186,7 @@ def test_spread_supports_precomputed_distances():
 def test_spread_supports_precomputed_cosine_distances():
     X = torch.randn(7, 5)
     distances = pairwise_cosine_distance(X, X)
+    distances = distances.fill_diagonal_(0.0)
 
     loss_from_points = spread(X, metric="cosine", scale=0.75)
     loss_from_distances = spread(
@@ -232,3 +236,94 @@ def test_magnitude_and_spread_of_empty_point_cloud_are_zero():
 
     assert magnitude(X) == 0.0  # ruff: ignore[float-equality-comparison]
     assert spread(X) == 0.0  # ruff: ignore[float-equality-comparison]
+
+
+def test_magnitude_and_spread_stay_finite_at_large_scale_float32():
+    rng = torch.Generator().manual_seed(42)
+    X = torch.randn(50, 2, generator=rng)
+
+    loss_magnitude = magnitude(X, metric="euclidean", scale=1e5)
+    loss_spread = spread(X, metric="euclidean", scale=1e5)
+
+    assert torch.isfinite(loss_magnitude)
+    assert torch.isfinite(loss_spread)
+    assert 0.0 < loss_magnitude <= X.shape[0] + 1e-3
+
+
+def test_magnitude_no_cholesky_fallback_at_large_scale(recwarn):
+    X = torch.randn(20, 3)
+
+    magnitude(X, metric="euclidean", scale=1e4, solver="auto")
+
+    assert len(recwarn) == 0
+
+
+@pytest.mark.parametrize("use_double_precision", [False, True])
+@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+def test_magnitude_and_spread_always_return_float32(
+    use_double_precision, input_dtype
+):
+    X = torch.randn(6, 3).to(dtype=input_dtype)
+
+    assert magnitude(X, use_double_precision=use_double_precision).dtype == (
+        torch.float32
+    )
+    assert spread(X, use_double_precision=use_double_precision).dtype == (
+        torch.float32
+    )
+
+
+def test_magnitude_and_spread_cast_int_input_and_return_float32():
+    X = torch.randint(0, 5, (6, 3))
+
+    assert magnitude(X).dtype == torch.float32
+    assert spread(X).dtype == torch.float32
+
+
+def test_magnitude_and_spread_symmetrize_defaults_to_true():
+    X = torch.randn(8, 4)
+
+    assert torch.allclose(
+        magnitude(X, metric="euclidean"),
+        magnitude(X, metric="euclidean", symmetrize=True),
+    )
+    assert torch.allclose(
+        spread(X, metric="euclidean"),
+        spread(X, metric="euclidean", symmetrize=True),
+    )
+
+
+def test_magnitude_and_spread_support_symmetrize_false():
+    X = torch.randn(8, 4)
+
+    loss_magnitude = magnitude(X, metric="euclidean", symmetrize=False)
+    loss_spread = spread(X, metric="euclidean", symmetrize=False)
+
+    assert torch.isfinite(loss_magnitude)
+    assert torch.isfinite(loss_spread)
+
+
+def test_magnitude_and_spread_do_not_alter_precomputed_matrix():
+    distances = torch.tensor(
+        [
+            [1e-3, 0.5, 1.0],
+            [0.5, 1e-3, -1e-4],
+            [1.0, -1e-4, 1e-3],
+        ]
+    )
+
+    expected_similarity = torch.exp(-1.0 * distances)
+    expected_magnitude = torch.linalg.inv(expected_similarity).sum()
+    expected_spread = (1 / expected_similarity.sum(dim=1)).sum()
+
+    loss_magnitude = magnitude(
+        distances,
+        metric="precomputed",
+        scale=1.0,
+        solver="inverse",
+        jitter=0.0,
+    )
+    loss_spread = spread(distances, metric="precomputed", scale=1.0)
+
+    assert torch.allclose(loss_magnitude, expected_magnitude.to(torch.float32))
+    assert torch.allclose(loss_spread, expected_spread.to(torch.float32))

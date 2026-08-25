@@ -64,7 +64,24 @@ def _similarity_matrix_from_input(
     else:
         distances = X_kernel
 
-    return torch.exp(-scale * distances)
+    if metric != "precomputed":
+        # Guard against float32-cancellation noise in cdist/cosine
+        distances = distances.clamp_min(0.0)
+
+    similarity_matrix = torch.exp(-scale * distances)
+
+    if metric != "precomputed":
+        # Force self-similarities to 1.0, guarding against float32-precision
+        similarity_matrix = torch.diagonal_scatter(
+            similarity_matrix,
+            torch.ones(
+                similarity_matrix.shape[0],
+                dtype=similarity_matrix.dtype,
+                device=similarity_matrix.device,
+            ),
+        )
+
+    return similarity_matrix
 
 
 def magnitude(
@@ -72,7 +89,7 @@ def magnitude(
     metric: str = "euclidean",
     scale: float = 1.0,
     use_double_precision: bool = False,
-    symmetrize: bool = False,
+    symmetrize: bool = True,
     jitter: float = 1e-6,
     solver: str = "auto",
 ) -> torch.Tensor:  # ty: ignore[invalid-return-type]
@@ -94,9 +111,12 @@ def magnitude(
         `1.0`.
     use_double_precision : bool, optional
         Whether to use double precision for internal computations. Defaults to
-        `False`.
+        `False`. Note that the returned tensor is always cast to `float32`,
+        regardless of this setting.
     symmetrize : bool, optional
-        Whether to symmetrize the similarity matrix. Defaults to `False`.
+        Whether to symmetrize the similarity matrix. Defaults to `True`,
+        since `torch.linalg.cholesky`'s backward pass assumes a symmetric
+        input and float32-noise can otherwise make it slightly asymmetric.
     jitter : float, optional
         Small constant added to the diagonal of the similarity matrix for
         numerical stability. Defaults to `1e-6`.
@@ -107,10 +127,19 @@ def magnitude(
         emitting a `UserWarning`, if the similarity matrix is not
         positive-definite. Defaults to `"auto"`.
 
+    Notes
+    -----
+    For `metric` in `{"euclidean", "cosine"}`, the similarity matrix's diagonal
+    is always forced to exactly `1` (self-similarity), which guards against
+    float32-precision noise in the underlying distance computation
+    destabilizing the solve at large `scale`. This is not applied when
+    `metric="precomputed"`, since that matrix is supplied as-is by the caller.
+
     Returns
     -------
     torch.Tensor
-        Tensor containing the magnitude of the point cloud specified by `X`.
+        Tensor of dtype `float32` containing the magnitude of the point cloud
+        specified by `X`.
 
     Raises
     ------
@@ -163,12 +192,17 @@ def magnitude(
                 device=similarity_matrix.device,
             )
             x = torch.linalg.solve_triangular(L, ones, upper=False)
-            return (x.mT @ x).squeeze()
+            return (x.mT @ x).squeeze().to(dtype=torch.float32)
         warnings.warn(
             "Cholesky decomposition failed; falling back to solver='inverse'",
             stacklevel=2,
         )
-        return torch.linalg.inv(similarity_matrix).sum().squeeze()
+        return (
+            torch.linalg.inv(similarity_matrix)
+            .sum()
+            .squeeze()
+            .to(dtype=torch.float32)
+        )
     if solver == "cholesky":
         L = torch.linalg.cholesky(similarity_matrix, upper=False)
         ones = torch.ones(
@@ -178,9 +212,14 @@ def magnitude(
             device=similarity_matrix.device,
         )
         x = torch.linalg.solve_triangular(L, ones, upper=False)
-        return (x.mT @ x).squeeze()
+        return (x.mT @ x).squeeze().to(dtype=torch.float32)
     if solver == "inverse":
-        return torch.linalg.inv(similarity_matrix).sum().squeeze()
+        return (
+            torch.linalg.inv(similarity_matrix)
+            .sum()
+            .squeeze()
+            .to(dtype=torch.float32)
+        )
 
 
 def spread(
@@ -188,7 +227,7 @@ def spread(
     metric: str = "euclidean",
     scale: float = 1.0,
     use_double_precision: bool = False,
-    symmetrize: bool = False,
+    symmetrize: bool = True,
 ) -> torch.Tensor:
     """Computes metric space spread from a point cloud or from a matrix of
     pairwise distances.
@@ -208,14 +247,26 @@ def spread(
         `1.0`.
     use_double_precision : bool, optional
         Whether to use double precision for internal computations. Defaults to
-        `False`.
+        `False`. Note that the returned tensor is always cast to `float32`,
+        regardless of this setting.
     symmetrize : bool, optional
-        Whether to symmetrize the similarity matrix. Defaults to `False`.
+        Whether to symmetrize the similarity matrix. Defaults to `True`,
+        since `torch.linalg.cholesky`'s backward pass assumes a symmetric
+        input and float32-noise can otherwise make it slightly asymmetric.
+
+    Notes
+    -----
+    For `metric` in `{"euclidean", "cosine"}`, the similarity matrix's diagonal
+    is always forced to exactly `1` (self-similarity), which guards against
+    float32-precision noise in the underlying distance computation
+    destabilizing the solve at large `scale`. This is not applied when
+    `metric="precomputed"`, since that matrix is supplied as-is by the caller.
 
     Returns
     -------
     torch.Tensor
-        Tensor containing the spread of the point cloud specified by `X`.
+        Tensor of dtype `float32` containing the magnitude of the point cloud
+        specified by `X`.
 
     Raises
     ------
@@ -245,4 +296,9 @@ def spread(
     if symmetrize:
         similarity_matrix = 0.5 * (similarity_matrix + similarity_matrix.mT)
 
-    return (1 / similarity_matrix.sum(dim=1)).sum().squeeze()
+    return (
+        (1 / similarity_matrix.sum(dim=1))
+        .sum()
+        .squeeze()
+        .to(dtype=torch.float32)
+    )
