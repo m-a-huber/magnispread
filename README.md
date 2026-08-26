@@ -1,4 +1,4 @@
-# magnispread
+# MagniSpread
 
 `magnispread` provides PyTorch implementations of metric space magnitude, spread, and spread dimension. These are described, for instance, in [Limbeck et al. (2024)](#references), [Willerton (2025)](#references) and [Dunne (2023)](#references), respectively.
 
