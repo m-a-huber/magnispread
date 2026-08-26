@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from magnispread.functional import magnitude, spread
+from magnispread.functional import magnitude, spread, spread_dim
 from magnispread.metrics import pairwise_cosine_distance
 
 
@@ -231,11 +231,140 @@ def test_spread_validates_t():
         spread(X, scale=0)
 
 
-def test_magnitude_and_spread_of_empty_point_cloud_are_zero():
+@pytest.mark.parametrize("function", [magnitude, spread, spread_dim])
+def test_functionals_reject_empty_point_clouds(function):
     X = torch.randn(0, 4)
 
-    assert magnitude(X) == 0.0  # ruff: ignore[float-equality-comparison]
-    assert spread(X) == 0.0  # ruff: ignore[float-equality-comparison]
+    with pytest.raises(ValueError, match="at least one point"):
+        function(X)
+
+
+def test_spread_dim_returns_scalar_and_backward():
+    X = torch.randn(8, 4, requires_grad=True)
+    loss = spread_dim(X, metric="euclidean")
+
+    assert loss.ndim == 0
+    loss.backward()
+    assert X.grad is not None
+    assert torch.isfinite(X.grad).all()
+
+
+def test_spread_dim_supports_cosine_metric():
+    X = torch.randn(10, 6, requires_grad=True)
+    loss = spread_dim(X, metric="cosine", scale=0.5)
+
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert X.grad is not None
+
+
+def test_spread_dim_matches_spread_scale_derivative():
+    X = torch.randn(6, 3, dtype=torch.float64)
+    scale = 0.75
+    distances = torch.cdist(X, X, p=2)
+    similarity = torch.exp(-scale * distances)
+    row_sums = similarity.sum(dim=1)
+    spread_value = (1 / row_sums).sum()
+    spread_derivative = (
+        (distances * similarity).sum(dim=1) / row_sums.square()
+    ).sum()
+    expected = scale / spread_value * spread_derivative
+
+    assert torch.allclose(
+        spread_dim(X, scale=scale, use_double_precision=True),
+        expected.to(dtype=torch.float32),
+        rtol=1e-4,
+        atol=1e-5,
+    )
+
+
+def test_spread_dim_supports_precomputed_distances():
+    X = torch.randn(7, 5)
+    distances = torch.cdist(X, X, p=2)
+    distances = distances.fill_diagonal_(0.0)
+
+    result_from_points = spread_dim(X, metric="euclidean", scale=0.75)
+    result_from_distances = spread_dim(
+        distances,
+        metric="precomputed",
+        scale=0.75,
+    )
+
+    assert torch.allclose(result_from_points, result_from_distances)
+
+
+@pytest.mark.parametrize("use_double_precision", [False, True])
+@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+def test_spread_dim_always_returns_float32(use_double_precision, input_dtype):
+    X = torch.randn(6, 3).to(dtype=input_dtype)
+
+    assert (
+        spread_dim(
+            X,
+            use_double_precision=use_double_precision,
+        ).dtype
+        == torch.float32
+    )
+
+
+def test_spread_dim_casts_int_input_and_returns_float32():
+    X = torch.randint(0, 5, (6, 3))
+
+    assert spread_dim(X).dtype == torch.float32
+
+
+def test_spread_dim_rejects_invalid_metric():
+    X = torch.randn(4, 3)
+
+    with pytest.raises(ValueError, match="metric"):
+        spread_dim(X, metric="manhattan")
+
+
+def test_spread_dim_requires_2d_input():
+    X = torch.randn(4, 3, 2)
+
+    with pytest.raises(ValueError, match="2D"):
+        spread_dim(X)
+
+
+def test_spread_dim_requires_square_precomputed_input():
+    X = torch.randn(4, 3)
+
+    with pytest.raises(ValueError, match="square"):
+        spread_dim(X, metric="precomputed")
+
+
+def test_spread_dim_validates_scale():
+    X = torch.randn(4, 3)
+
+    with pytest.raises(ValueError, match="`scale`"):
+        spread_dim(X, scale=0)
+
+
+def test_spread_dim_uses_row_sums_without_symmetrization():
+    distances = torch.tensor(
+        [
+            [0.1, 0.5, 1.0],
+            [0.2, 0.3, 0.7],
+            [0.4, 0.8, 0.6],
+        ]
+    )
+    similarity = torch.exp(-distances)
+    row_sums = similarity.sum(dim=1)
+    expected_spread = (1 / row_sums).sum()
+    expected = (
+        1.0
+        / expected_spread
+        * (distances * similarity).sum(dim=1).div(row_sums**2).sum()
+    )
+
+    result = spread_dim(
+        distances,
+        metric="precomputed",
+        symmetrize=False,
+    )
+
+    assert torch.allclose(result, expected.to(dtype=torch.float32))
 
 
 def test_magnitude_and_spread_stay_finite_at_large_scale_float32():
