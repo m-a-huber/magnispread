@@ -13,6 +13,7 @@ class MagLoss(nn.Module):
         scale: float = 1.0,
         use_double_precision: bool = False,
         symmetrize: bool = True,
+        force_diagonal: bool | None = None,
         jitter: float = 1e-6,
         solver: str = "auto",
     ):
@@ -21,6 +22,7 @@ class MagLoss(nn.Module):
         self.scale = scale
         self.use_double_precision = use_double_precision
         self.symmetrize = symmetrize
+        self.force_diagonal = force_diagonal
         self.jitter = jitter
         self.solver = solver
 
@@ -32,6 +34,7 @@ class MagLoss(nn.Module):
             scale=self.scale,
             use_double_precision=self.use_double_precision,
             symmetrize=self.symmetrize,
+            force_diagonal=self.force_diagonal,
             jitter=self.jitter,
             solver=self.solver,
         )
@@ -47,12 +50,14 @@ class SpreadLoss(nn.Module):
         scale: float = 1.0,
         use_double_precision: bool = False,
         symmetrize: bool = True,
+        force_diagonal: bool | None = None,
     ):
         super().__init__()
         self.metric = metric
         self.scale = scale
         self.use_double_precision = use_double_precision
         self.symmetrize = symmetrize
+        self.force_diagonal = force_diagonal
 
     def forward(self, pred):
         """Compute spread via `magnispread.functional.spread`."""
@@ -62,6 +67,7 @@ class SpreadLoss(nn.Module):
             scale=self.scale,
             use_double_precision=self.use_double_precision,
             symmetrize=self.symmetrize,
+            force_diagonal=self.force_diagonal,
         )
 
 
@@ -75,12 +81,14 @@ class SpreadDimLoss(nn.Module):
         scale: float = 1.0,
         use_double_precision: bool = False,
         symmetrize: bool = True,
+        force_diagonal: bool | None = None,
     ):
         super().__init__()
         self.metric = metric
         self.scale = scale
         self.use_double_precision = use_double_precision
         self.symmetrize = symmetrize
+        self.force_diagonal = force_diagonal
 
     def forward(self, pred):
         """Compute spread dimension via `magnispread.functional.spread_dim`."""
@@ -90,4 +98,5 @@ class SpreadDimLoss(nn.Module):
             scale=self.scale,
             use_double_precision=self.use_double_precision,
             symmetrize=self.symmetrize,
+            force_diagonal=self.force_diagonal,
         )
