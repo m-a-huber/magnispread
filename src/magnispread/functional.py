@@ -6,7 +6,7 @@ from .spread import (
     spread_dim_from_distance_matrix,
     spread_from_similarity_matrix,
 )
-from .validation import _validate_inputs
+from .validation import validate_inputs
 
 
 def _get_output_dtype(
@@ -113,7 +113,7 @@ def magnitude(
         `"inverse"`.
     """
 
-    _validate_inputs(
+    validate_inputs(
         X=X,
         metric=metric,
         scale=scale,
@@ -215,7 +215,7 @@ def spread(
         If `scale` is not positive.
     """
 
-    _validate_inputs(
+    validate_inputs(
         X=X,
         metric=metric,
         scale=scale,
@@ -310,7 +310,7 @@ def spread_dim(
         If `scale` is not positive.
     """
 
-    _validate_inputs(
+    validate_inputs(
         X=X,
         metric=metric,
         scale=scale,

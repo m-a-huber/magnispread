@@ -1,7 +1,7 @@
 import torch
 
 
-def _validate_inputs(
+def validate_inputs(
     X: torch.Tensor,
     metric: str,
     scale: float,
