@@ -1,8 +1,18 @@
 # MagniSpread
 
-`magnispread` provides PyTorch implementations of metric space magnitude, spread, and spread dimension. These are described, for instance, in [Limbeck et al. (2024)](#references), [Willerton (2025)](#references) and [Dunne (2023)](#references), respectively.
+`magnispread` provides PyTorch implementations of metric space magnitude, magnitude dimension, spread, and spread dimension. These are described, for instance, in [Limbeck et al. (2024)](#references), [Meckes (2015)](#references), [Willerton (2025)](#references), and [Dunne (2023)](#references), respectively.
 
-The package supports computation of magnitude, spread, and spread dimension using Euclidean and cosine distances, as well as from a matrix of pairwise distances directly.
+**Note:** we treat magnitude dimension and spread dimension as functions depending on the scale parameter $t>0$, defined as
+
+$$\mathrm{dim_{X}^{Mag}}(t)=\frac{d\log\mathrm{Mag_{X}}(t)}{d\log t}=\frac{t}{\mathrm{Mag_{X}}(t)}\frac{d\mathrm{Mag_{X}}(t)}{dt}$$
+
+and
+
+$$\mathrm{dim_{X}^{Spr}}(t)=\frac{d\log\mathrm{Spr_{X}}(t)}{d\log t}=\frac{t}{\mathrm{Spr_{X}}(t)}\frac{d\mathrm{Spr_{X}}(t)}{dt},$$
+
+respectively. This is in contrast to many sources that define magnitude dimension and spread dimension as the limit as $t\to\infty$ in the respective expressions above.
+
+The package supports computation of magnitude, spread, spread dimension, and magnitude dimension using Euclidean and cosine distances, as well as from a matrix of pairwise distances directly.
 
 ## Example Usage
 
@@ -10,7 +20,7 @@ The package supports computation of magnitude, spread, and spread dimension usin
 
 ```python
 import torch
-from magnispread import magnitude, spread, spread_dim
+from magnispread import magnitude, magnitude_dim, spread, spread_dim
 
 X = torch.randn(16, 64, requires_grad=True)
 
@@ -20,6 +30,13 @@ loss_magnitude = magnitude(
     scale=1.0,
 )
 loss_magnitude.backward()
+
+# Usage for magnitude dimension
+loss_magnitude_dim = magnitude_dim(
+    X,
+    scale=1.0,
+)
+loss_magnitude_dim.backward()
 
 # Usage for spread
 loss_spread = spread(
@@ -40,7 +57,7 @@ Precomputed pairwise distances are also supported:
 
 ```python
 import torch
-from magnispread import magnitude, spread, spread_dim
+from magnispread import magnitude, magnitude_dim, spread, spread_dim
 
 X = torch.randn(16, 64, requires_grad=True)
 D = torch.cdist(X, X, p=2)
@@ -51,6 +68,14 @@ loss_magnitude = magnitude(
     metric="precomputed",
     scale=1.0,
 )
+
+# Usage for magnitude dimension
+loss_magnitude_dim = magnitude_dim(
+    D,
+    metric="precomputed",
+    scale=1.0,
+)
+loss_magnitude_dim.backward()
 
 # Usage for spread
 loss_spread = spread(
@@ -72,7 +97,7 @@ loss_spread_dim.backward()
 
 ```python
 import torch
-from magnispread import MagLoss, SpreadLoss, SpreadDimLoss
+from magnispread import MagDimLoss, MagLoss, SpreadDimLoss, SpreadLoss
 
 X = torch.randn(32, 128, requires_grad=True)
 
@@ -84,6 +109,15 @@ criterion_magnitude = MagLoss(
 
 loss_magnitude = criterion_magnitude(X)
 loss_magnitude.backward()
+
+# Usage for magnitude dimension
+criterion_magnitude_dim = MagDimLoss(
+    metric="cosine",
+    scale=1.0,
+)
+
+loss_magnitude_dim = criterion_magnitude_dim(X)
+loss_magnitude_dim.backward()
 
 # Usage for spread
 criterion_spread = SpreadLoss(
@@ -105,25 +139,27 @@ loss_spread_dim.backward()
 ```
 
 The same `metric="precomputed"` mode is available in `MagLoss`,
-`SpreadLoss` and `SpreadDimLoss` when the module input is already a pairwise-distance matrix.
+`SpreadLoss`, `SpreadDimLoss`, and `MagDimLoss` when the module input is already a pairwise-distance matrix.
 
 ## Notes
 
 - `metric="euclidean"` and `metric="cosine"` expect a point cloud with shape `(n_samples, n_features)`.
 - `metric="precomputed"` expects a square 2D tensor containing pairwise distances.
 - `scale` must be positive.
-- The diagonal of the similarity matrix is forced to exactly `1.0` by default for `metric="euclidean"` and `metric="cosine"` (guarding against float32-precision noise in the underlying distance computation that would otherwise destabilize the computation at large `scale`), but not for `metric="precomputed"`. This is controlled by the `force_diagonal` argument (available on the functional API as well as `MagLoss`, `SpreadLoss`, and `SpreadDimLoss`), which can be passed explicitly to override either default.
+- The diagonal of the similarity matrix is forced to exactly `1.0` by default for `metric="euclidean"` and `metric="cosine"` (guarding against float32-precision noise in the underlying distance computation that would otherwise destabilize the computation at large `scale`), but not for `metric="precomputed"`. This is controlled by the `force_diagonal` argument (available on the functional API as well as `MagLoss`, `MagDimLoss`, `SpreadLoss`, and `SpreadDimLoss`), which can be passed explicitly to override either default.
 - The similarity matrix is symmetrized by default for the same numerical-stability reasons. Set `symmetrize` to `False` to opt out.
 - Numerical stability can be further improved by using double precision for internal computations, via `use_double_precision=True`.
 - The returned tensor's dtype matches `X`'s floating-point dtype (or `float32` if `X` is not floating-point), regardless of `use_double_precision`.
-- `magnitude` adds a small `jitter` (default `1e-6`) to the diagonal of the similarity matrix before solving, since that matrix can otherwise become singular or ill-conditioned whenever points coincide or cluster tightly.
-- By default, `magnitude` uses `solver="auto"`: it first attempts Cholesky decomposition (see Appendix A.5 in [Limbeck et al. (2024)](#references) for details) and, if that fails, falls back to `solver="linsolve"`, which solves `similarity_matrix @ weights = 1` directly (emitting a `UserWarning` when this happens). `solver="inverse"` computes magnitude by directly inverting the similarity matrix instead; `solver="cholesky"` and `solver="linsolve"` can also be set explicitly to skip the fallback logic.
-- Empty point clouds are rejected by all three functional APIs.
+- `magnitude` and `magnitude_dim` both add a small `jitter` (default `1e-6`) to the diagonal of the similarity matrix before solving, since that matrix can otherwise become singular or ill-conditioned whenever points coincide or cluster tightly. `magnitude_dim` needs the magnitude weight vector (the solution of `similarity_matrix @ weights = 1`) to compute the scale-derivative of magnitude, so it solves the same kind of linear system as `magnitude` itself and shares its `jitter`/`solver` arguments; `spread` and `spread_dim` need no such solve, since spread only depends on row sums of the similarity matrix.
+- By default, `magnitude` and `magnitude_dim` use `solver="auto"`: they first attempt Cholesky decomposition (see Appendix A.5 in [Limbeck et al. (2024)](#references) for details) and, if that fails, fall back to `solver="linsolve"`, which solves `similarity_matrix @ weights = 1` directly (emitting a `UserWarning` when this happens). `solver="inverse"` computes the weight vector by directly inverting the similarity matrix instead; `solver="cholesky"` and `solver="linsolve"` can also be set explicitly to skip the fallback logic.
+- Empty point clouds are rejected by all four functional APIs.
 
 ## References
 
 1. Katharina Limbeck, Rayna Andreeva, Rik Sarkar, and Bastian Rieck. 2024. [Metric space Magnitude for Evaluating the Diversity of Latent Representations](https://doi.org/10.52202/079017-3937). In *Advances in Neural Information Processing Systems*, volume 37, pages 123911–123953. Curran Associates, Inc.
 
-2. Kevin Dunne. 2023. [Metric Space Spread, Intrinsic Dimension and the Manifold Hypothesis](https://arxiv.org/abs/2308.01382). *Preprint*, arXiv:2308.01382. ArXiv:2308.01382 [math.MG], https://arxiv.org/abs/2308.01382.
+1. Mark W. Meckes. 2025. [Magnitude, Diversity, Capacities, and Dimensions of Metric Spaces](https://doi.org/10.1007/s11118-014-9444-3). In *Potential Anal*, volume 42, pages 549–572.
 
-3. Simon Willerton. 2025. [Spread: a measure of the size of metric spaces](https://arxiv.org/abs/2508.08025). *Preprint*, arXiv:2508.08025. ArXiv:2508.08025 [math.AT], https://arxiv.org/abs/2508.08025.
+3. Kevin Dunne. 2023. [Metric Space Spread, Intrinsic Dimension and the Manifold Hypothesis](https://arxiv.org/abs/2308.01382). *Preprint*, arXiv:2308.01382. ArXiv:2308.01382 [math.MG], https://arxiv.org/abs/2308.01382.
+
+4. Simon Willerton. 2025. [Spread: a measure of the size of metric spaces](https://arxiv.org/abs/2508.08025). *Preprint*, arXiv:2508.08025. ArXiv:2508.08025 [math.AT], https://arxiv.org/abs/2508.08025.

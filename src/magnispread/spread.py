@@ -26,8 +26,7 @@ def spread_dim_from_distance_matrix(
     row_sums = similarity_matrix.sum(dim=1)
     spread = (1 / row_sums).sum()
 
-    factor_1 = scale / spread
-    factor_2 = (
+    derivative_term = (
         (distance_matrix * similarity_matrix).sum(dim=1) / (row_sums**2)
     ).sum()
-    return (factor_1 * factor_2).to(dtype=output_dtype)
+    return ((scale / spread) * derivative_term).to(dtype=output_dtype)

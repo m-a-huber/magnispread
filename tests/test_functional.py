@@ -1,10 +1,11 @@
 import pytest
 import torch
 
-from magnispread.functional import magnitude, spread, spread_dim
+from magnispread.functional import magnitude, magnitude_dim, spread, spread_dim
 from magnispread.metrics import pairwise_cosine_distance
 
-FUNCTIONS = [magnitude, spread, spread_dim]
+FUNCTIONS = [magnitude, magnitude_dim, spread, spread_dim]
+JITTER_SOLVER_FUNCTIONS = [magnitude, magnitude_dim]
 
 
 # ---------------------------------------------------------------------------
@@ -47,16 +48,18 @@ def test_rejects_non_positive_scale(function):
         function(X, scale=0.0)
 
 
-def test_magnitude_rejects_negative_jitter():
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_rejects_negative_jitter(function):
     X = torch.randn(4, 3)
     with pytest.raises(ValueError, match="`jitter`"):
-        magnitude(X, jitter=-1e-6)
+        function(X, jitter=-1e-6)
 
 
-def test_magnitude_rejects_invalid_solver():
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_rejects_invalid_solver(function):
     X = torch.randn(4, 3)
     with pytest.raises(ValueError, match="`solver`"):
-        magnitude(X, solver="svd")
+        function(X, solver="svd")
 
 
 # ---------------------------------------------------------------------------
@@ -195,51 +198,55 @@ def test_force_diagonal_defaults_to_false_for_precomputed(function):
 
 
 # ---------------------------------------------------------------------------
-# `jitter` (magnitude only). README: defaults to `1e-6`, guards against a
-# singular/ill-conditioned similarity matrix.
+# `jitter` (magnitude and magnitude_dim only). README: defaults to `1e-6`,
+# guards against a singular/ill-conditioned similarity matrix.
 # ---------------------------------------------------------------------------
 
 
-def test_magnitude_jitter_defaults_to_1e_minus_6():
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_jitter_defaults_to_1e_minus_6(function):
     X = torch.randn(8, 4)
 
-    assert torch.equal(magnitude(X), magnitude(X, jitter=1e-6))
+    assert torch.equal(function(X), function(X, jitter=1e-6))
 
 
-def test_magnitude_jitter_guards_against_singular_similarity_matrix():
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_jitter_guards_against_singular_similarity_matrix(function):
     # An exact duplicate point makes the similarity matrix exactly singular
     # (two identical rows/columns).
     torch.manual_seed(0)
     X = torch.randn(20, 4)
     X_with_duplicate = torch.cat([X, X[:1]])
 
-    result = magnitude(X_with_duplicate)  # default jitter=1e-6
+    result = function(X_with_duplicate)  # default jitter=1e-6
     assert torch.isfinite(result)
 
     with (
         pytest.warns(UserWarning, match="linsolve"),
         pytest.raises(torch.linalg.LinAlgError),
     ):
-        magnitude(X_with_duplicate, jitter=0.0)
+        function(X_with_duplicate, jitter=0.0)
 
 
 # ---------------------------------------------------------------------------
-# `solver` (magnitude only).
+# `solver` (magnitude and magnitude_dim only).
 # ---------------------------------------------------------------------------
 
 
-def test_magnitude_auto_matches_cholesky_when_well_conditioned(recwarn):
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_auto_matches_cholesky_when_well_conditioned(function, recwarn):
     X = torch.randn(8, 4)
 
-    result_auto = magnitude(X, solver="auto")
-    result_cholesky = magnitude(X, solver="cholesky")
+    result_auto = function(X, solver="auto")
+    result_cholesky = function(X, solver="cholesky")
 
     assert torch.allclose(result_auto, result_cholesky)
     assert len(recwarn) == 0
 
 
-def test_magnitude_auto_falls_back_to_linsolve_on_cholesky_failure(
-    monkeypatch,
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_auto_falls_back_to_linsolve_on_cholesky_failure(
+    function, monkeypatch
 ):
     X = torch.randn(6, 3)
     original_cholesky_ex = torch.linalg.cholesky_ex
@@ -251,17 +258,18 @@ def test_magnitude_auto_falls_back_to_linsolve_on_cholesky_failure(
     monkeypatch.setattr(torch.linalg, "cholesky_ex", _failing_cholesky_ex)
 
     with pytest.warns(UserWarning, match="linsolve"):
-        result_auto = magnitude(X, solver="auto")
+        result_auto = function(X, solver="auto")
 
-    result_linsolve = magnitude(X, solver="linsolve")
+    result_linsolve = function(X, solver="linsolve")
     assert torch.allclose(result_auto, result_linsolve)
 
 
-def test_magnitude_solver_variants_agree():
+@pytest.mark.parametrize("function", JITTER_SOLVER_FUNCTIONS)
+def test_solver_variants_agree(function):
     X = torch.randn(6, 3, dtype=torch.float64)
 
     results = {
-        solver: magnitude(X, solver=solver, jitter=0.0)
+        solver: function(X, solver=solver, jitter=0.0)
         for solver in ["cholesky", "linsolve", "inverse"]
     }
 
@@ -290,6 +298,34 @@ def test_spread_dim_matches_spread_scale_derivative():
 
     assert torch.allclose(
         spread_dim(X, scale=scale, use_double_precision=True),
+        expected,
+        rtol=1e-4,
+        atol=1e-6,
+    )
+
+
+# ---------------------------------------------------------------------------
+# `magnitude_dim` math. Docstring: "the logarithmic derivative of magnitude
+# with respect to scale, namely scale / magnitude * d(magnitude) / d(scale)".
+# ---------------------------------------------------------------------------
+
+
+def test_magnitude_dim_matches_magnitude_scale_derivative():
+    X = torch.randn(6, 3, dtype=torch.float64)
+    scale = 0.75
+
+    distances = torch.cdist(X, X, p=2)
+    similarity = torch.exp(-scale * distances)
+    ones = torch.ones(len(X), 1, dtype=torch.float64)
+    w = torch.linalg.solve(similarity, ones).squeeze(-1)
+    magnitude_value = w.sum()
+    magnitude_derivative = w @ ((distances * similarity) @ w)
+    expected = scale / magnitude_value * magnitude_derivative
+
+    assert torch.allclose(
+        magnitude_dim(
+            X, scale=scale, use_double_precision=True, jitter=0.0
+        ),
         expected,
         rtol=1e-4,
         atol=1e-6,

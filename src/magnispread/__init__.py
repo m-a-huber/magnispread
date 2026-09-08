@@ -1,11 +1,13 @@
-from .functional import magnitude, spread, spread_dim
-from .losses import MagLoss, SpreadDimLoss, SpreadLoss
+from .functional import magnitude, magnitude_dim, spread, spread_dim
+from .losses import MagDimLoss, MagLoss, SpreadDimLoss, SpreadLoss
 
 __all__ = [
+    "MagDimLoss",
     "MagLoss",
     "SpreadDimLoss",
     "SpreadLoss",
     "magnitude",
+    "magnitude_dim",
     "spread",
     "spread_dim",
 ]

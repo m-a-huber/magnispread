@@ -9,6 +9,12 @@ Both magnitude and spread work out to the same closed form:
 Spread dimension (`t / spread * d(spread)/dt`) simplifies to:
 
     spread_dim(t) = t * (1 - sigma(t)) = t * exp(-t) / (1 + exp(-t))
+
+Since magnitude and spread coincide on this space, their scale-derivatives
+coincide too, so magnitude dimension works out to the exact same closed form
+as spread dimension:
+
+    magnitude_dim(t) = t * exp(-t) / (1 + exp(-t))
 """
 
 import math
@@ -16,7 +22,7 @@ import math
 import pytest
 import torch
 
-from magnispread.functional import magnitude, spread, spread_dim
+from magnispread.functional import magnitude, magnitude_dim, spread, spread_dim
 
 X = torch.tensor([[0.0, 0.0], [1.0, 0.0]], dtype=torch.float64)
 SCALES = torch.logspace(math.log10(0.01), math.log10(100.0), steps=25).tolist()
@@ -45,9 +51,27 @@ def test_spread_dim_matches_closed_form(t):
     assert result == pytest.approx(expected, rel=1e-6, abs=1e-9)
 
 
+@pytest.mark.parametrize("t", SCALES)
+def test_magnitude_dim_matches_closed_form(t):
+    expected = t * math.exp(-t) / (1.0 + math.exp(-t))
+    result = magnitude_dim(
+        X, scale=t, use_double_precision=True, jitter=0.0
+    ).item()
+    assert result == pytest.approx(expected, rel=1e-6, abs=1e-9)
+
+
 def test_magnitude_equals_spread_for_two_point_space():
     # A special property of two-point spaces: magnitude and spread coincide.
     for t in SCALES:
         m = magnitude(X, scale=t, use_double_precision=True, jitter=0.0)
         s = spread(X, scale=t, use_double_precision=True)
         assert torch.allclose(m, s)
+
+
+def test_magnitude_dim_equals_spread_dim_for_two_point_space():
+    # Since magnitude and spread coincide on two-point spaces, so do their
+    # scale-derivatives, and hence magnitude dimension and spread dimension.
+    for t in SCALES:
+        md = magnitude_dim(X, scale=t, use_double_precision=True, jitter=0.0)
+        sd = spread_dim(X, scale=t, use_double_precision=True)
+        assert torch.allclose(md, sd)

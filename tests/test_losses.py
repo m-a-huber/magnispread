@@ -4,19 +4,25 @@ import pytest
 import torch
 import torch.nn as nn
 
-from magnispread import MagLoss, SpreadDimLoss, SpreadLoss
-from magnispread.functional import magnitude, spread, spread_dim
+from magnispread import MagDimLoss, MagLoss, SpreadDimLoss, SpreadLoss
+from magnispread.functional import magnitude, magnitude_dim, spread, spread_dim
+
+LOSS_CLASSES = [MagLoss, MagDimLoss, SpreadLoss, SpreadDimLoss]
+LOSS_CLASS_FUNCTION_PAIRS = [
+    (MagLoss, magnitude),
+    (MagDimLoss, magnitude_dim),
+    (SpreadLoss, spread),
+    (SpreadDimLoss, spread_dim),
+]
+JITTER_SOLVER_LOSS_CLASSES = [MagLoss, MagDimLoss]
 
 
-@pytest.mark.parametrize("cls", [MagLoss, SpreadLoss, SpreadDimLoss])
+@pytest.mark.parametrize("cls", LOSS_CLASSES)
 def test_is_nn_module(cls):
     assert isinstance(cls(), nn.Module)
 
 
-@pytest.mark.parametrize(
-    "cls, function",
-    [(MagLoss, magnitude), (SpreadLoss, spread), (SpreadDimLoss, spread_dim)],
-)
+@pytest.mark.parametrize("cls, function", LOSS_CLASS_FUNCTION_PAIRS)
 def test_signature_mirrors_functional_counterpart(cls, function):
     # Parameter lists (aside from `X`/`self`) must match exactly, since the
     # loss modules are documented to mirror the functional API.
@@ -25,19 +31,13 @@ def test_signature_mirrors_functional_counterpart(cls, function):
     assert loss_params == func_params
 
 
-@pytest.mark.parametrize(
-    "cls, function",
-    [(MagLoss, magnitude), (SpreadLoss, spread), (SpreadDimLoss, spread_dim)],
-)
+@pytest.mark.parametrize("cls, function", LOSS_CLASS_FUNCTION_PAIRS)
 def test_defaults_match_functional_counterpart(cls, function):
     X = torch.randn(8, 4)
     assert torch.allclose(cls()(X), function(X))
 
 
-@pytest.mark.parametrize(
-    "cls, function",
-    [(MagLoss, magnitude), (SpreadLoss, spread), (SpreadDimLoss, spread_dim)],
-)
+@pytest.mark.parametrize("cls, function", LOSS_CLASS_FUNCTION_PAIRS)
 @pytest.mark.parametrize("metric", ["euclidean", "cosine", "precomputed"])
 @pytest.mark.parametrize("force_diagonal", [None, True, False])
 def test_matches_functional_counterpart_across_settings(
@@ -47,13 +47,13 @@ def test_matches_functional_counterpart_across_settings(
     D = torch.cdist(X, X, p=2) if metric == "precomputed" else X
 
     kwargs = {"metric": metric, "scale": 0.5, "force_diagonal": force_diagonal}
-    if cls is MagLoss:
+    if cls in JITTER_SOLVER_LOSS_CLASSES:
         kwargs.update(jitter=1e-5, solver="linsolve")
 
     assert torch.allclose(cls(**kwargs)(D), function(D, **kwargs))
 
 
-@pytest.mark.parametrize("cls", [MagLoss, SpreadLoss, SpreadDimLoss])
+@pytest.mark.parametrize("cls", LOSS_CLASSES)
 def test_supports_backward(cls):
     X = torch.randn(8, 4, requires_grad=True)
     loss = cls()(X)
@@ -70,7 +70,7 @@ def test_supports_backward(cls):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cls", [MagLoss, SpreadLoss, SpreadDimLoss])
+@pytest.mark.parametrize("cls", LOSS_CLASSES)
 @pytest.mark.parametrize("use_double_precision", [False, True])
 @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
 def test_output_dtype_matches_input_dtype(
@@ -83,7 +83,7 @@ def test_output_dtype_matches_input_dtype(
     assert result.dtype == input_dtype
 
 
-@pytest.mark.parametrize("cls", [MagLoss, SpreadLoss, SpreadDimLoss])
+@pytest.mark.parametrize("cls", LOSS_CLASSES)
 def test_non_floating_point_input_returns_float32(cls):
     X = torch.randint(0, 5, (6, 3))
 
