@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Huber"
+    given-names: "Marius"
+title: "MagniSpread: PyTorch-implementation of metric space magnitude, magnitude dimension, spread, and spread dimension"
+version: "0.1.0"
+date-released: 2026-09-08
+url: "https://github.com/m-a-huber/magnispread"
