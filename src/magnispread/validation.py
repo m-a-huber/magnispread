@@ -4,7 +4,7 @@ import torch
 def validate_inputs(
     X: torch.Tensor,
     metric: str,
-    scale: float,
+    scale: float | None = None,
     jitter: float | None = None,
     solver: str | None = None,
 ) -> None:
@@ -30,7 +30,7 @@ def validate_inputs(
             f"`metric='precomputed'`, got shape {tuple(X.shape)}"
         )
 
-    if scale <= 0:
+    if scale is not None and scale <= 0:
         raise ValueError(f"`scale` must be positive, got {scale}")
 
     if jitter is not None and jitter < 0:

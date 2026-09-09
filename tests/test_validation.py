@@ -61,3 +61,8 @@ def test_rejects_invalid_solver():
 def test_solver_not_validated_when_none():
     X = torch.randn(4, 3)
     validate_inputs(X, metric="euclidean", scale=1.0, solver=None)
+
+
+def test_scale_not_validated_when_none():
+    X = torch.randn(4, 3)
+    validate_inputs(X, metric="euclidean", scale=None)

@@ -4,8 +4,22 @@ import pytest
 import torch
 import torch.nn as nn
 
-from magnispread import MagDimLoss, MagLoss, SpreadDimLoss, SpreadLoss
-from magnispread.functional import magnitude, magnitude_dim, spread, spread_dim
+from magnispread import (
+    MagDimLoss,
+    MagDimMaxLoss,
+    MagLoss,
+    SpreadDimLoss,
+    SpreadDimMaxLoss,
+    SpreadLoss,
+)
+from magnispread.functional import (
+    magnitude,
+    magnitude_dim,
+    magnitude_dim_max,
+    spread,
+    spread_dim,
+    spread_dim_max,
+)
 
 LOSS_CLASSES = [MagLoss, MagDimLoss, SpreadLoss, SpreadDimLoss]
 LOSS_CLASS_FUNCTION_PAIRS = [
@@ -15,14 +29,21 @@ LOSS_CLASS_FUNCTION_PAIRS = [
     (SpreadDimLoss, spread_dim),
 ]
 JITTER_SOLVER_LOSS_CLASSES = [MagLoss, MagDimLoss]
+MAX_LOSS_CLASSES = [MagDimMaxLoss, SpreadDimMaxLoss]
+MAX_LOSS_CLASS_FUNCTION_PAIRS = [
+    (MagDimMaxLoss, magnitude_dim_max),
+    (SpreadDimMaxLoss, spread_dim_max),
+]
 
 
-@pytest.mark.parametrize("cls", LOSS_CLASSES)
+@pytest.mark.parametrize("cls", LOSS_CLASSES + MAX_LOSS_CLASSES)
 def test_is_nn_module(cls):
     assert isinstance(cls(), nn.Module)
 
 
-@pytest.mark.parametrize("cls, function", LOSS_CLASS_FUNCTION_PAIRS)
+@pytest.mark.parametrize(
+    "cls, function", LOSS_CLASS_FUNCTION_PAIRS + MAX_LOSS_CLASS_FUNCTION_PAIRS
+)
 def test_signature_mirrors_functional_counterpart(cls, function):
     # Parameter lists (aside from `X`/`self`) must match exactly, since the
     # loss modules are documented to mirror the functional API.
@@ -88,3 +109,31 @@ def test_non_floating_point_input_returns_float32(cls):
     X = torch.randint(0, 5, (6, 3))
 
     assert cls()(X).dtype == torch.float32
+
+
+# ---------------------------------------------------------------------------
+# Scale-agnostic ("_max") loss wrappers. Their `forward` returns a
+# `DimMaxResult` namedtuple rather than a raw tensor, unlike every other
+# wrapper above, so they need bespoke versions of the tensor-assuming tests.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cls, function", MAX_LOSS_CLASS_FUNCTION_PAIRS)
+def test_max_losses_default_match_functional_counterpart(cls, function):
+    X = torch.randn(8, 4)
+
+    loss_result = cls()(X)
+    func_result = function(X)
+
+    assert torch.allclose(loss_result.dim, func_result.dim)
+    assert loss_result.scale == func_result.scale
+
+
+@pytest.mark.parametrize("cls", MAX_LOSS_CLASSES)
+def test_max_losses_support_backward(cls):
+    X = torch.randn(8, 4, requires_grad=True)
+    loss = cls()(X)
+
+    loss.dim.backward()
+    assert X.grad is not None
+    assert torch.isfinite(X.grad).all()

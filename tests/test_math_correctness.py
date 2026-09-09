@@ -22,7 +22,14 @@ import math
 import pytest
 import torch
 
-from magnispread.functional import magnitude, magnitude_dim, spread, spread_dim
+from magnispread.functional import (
+    magnitude,
+    magnitude_dim,
+    magnitude_dim_max,
+    spread,
+    spread_dim,
+    spread_dim_max,
+)
 
 X = torch.tensor([[0.0, 0.0], [1.0, 0.0]], dtype=torch.float64)
 SCALES = torch.logspace(math.log10(0.01), math.log10(100.0), steps=25).tolist()
@@ -75,3 +82,66 @@ def test_magnitude_dim_equals_spread_dim_for_two_point_space():
         md = magnitude_dim(X, scale=t, use_double_precision=True, jitter=0.0)
         sd = spread_dim(X, scale=t, use_double_precision=True)
         assert torch.allclose(md, sd)
+
+
+# ---------------------------------------------------------------------------
+# Scale-agnostic dimension (`sup_{t>0} dim(t)`) against an independent
+# ground truth for the two-point space.
+#
+# Setting d(dim)/dt = 0 for dim(t) = t * exp(-t) / (1 + exp(-t)) gives the
+# critical-point equation `t - 1 = exp(-t)`. The function
+# `g(t) = t - 1 - exp(-t)` is strictly increasing (`g'(t) = 1 + exp(-t) > 0`),
+# so this equation has a unique root, found below by plain bisection --
+# independent of the production golden-section search, so this is a real
+# ground truth rather than a self-consistency check.
+#
+# Substituting `exp(-t*) = t* - 1` (from the critical-point equation) into
+# `dim(t*) = t* * exp(-t*) / (1 + exp(-t*))` gives
+# `dim(t*) = t*(t*-1) / ((t*-1)+1) = t*-1`. So `dim(t*) = t*-1` is an exact
+# algebraic identity for this example, not a numerical coincidence.
+# ---------------------------------------------------------------------------
+
+
+def _bisect_critical_point(lo=0.01, hi=100.0, iterations=200):
+    g = lambda t: t - 1.0 - math.exp(-t)
+    for _ in range(iterations):
+        mid = (lo + hi) / 2.0
+        if g(mid) < 0.0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
+T_STAR = _bisect_critical_point()
+DIM_MAX = T_STAR - 1.0
+
+
+def test_magnitude_dim_max_matches_independent_ground_truth():
+    result = magnitude_dim_max(
+        X, use_double_precision=True, jitter=0.0, t_min=0.01, t_max=100.0
+    )
+
+    assert result.scale == pytest.approx(T_STAR, rel=1e-3)
+    assert result.dim.item() == pytest.approx(DIM_MAX, rel=1e-4)
+
+
+def test_spread_dim_max_matches_independent_ground_truth():
+    result = spread_dim_max(
+        X, use_double_precision=True, t_min=0.01, t_max=100.0
+    )
+
+    assert result.scale == pytest.approx(T_STAR, rel=1e-3)
+    assert result.dim.item() == pytest.approx(DIM_MAX, rel=1e-4)
+
+
+def test_magnitude_dim_max_equals_spread_dim_max_for_two_point_space():
+    # Since magnitude_dim and spread_dim coincide on two-point spaces at
+    # every scale, so do their maxima over scale.
+    md_max = magnitude_dim_max(
+        X, use_double_precision=True, jitter=0.0, t_min=0.01, t_max=100.0
+    )
+    sd_max = spread_dim_max(X, use_double_precision=True, t_min=0.01, t_max=100.0)
+
+    assert torch.allclose(md_max.dim, sd_max.dim)
+    assert md_max.scale == pytest.approx(sd_max.scale, rel=1e-6)

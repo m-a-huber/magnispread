@@ -1,11 +1,21 @@
 import pytest
 import torch
 
-from magnispread.functional import magnitude, magnitude_dim, spread, spread_dim
+from magnispread.functional import (
+    DimMaxResult,
+    magnitude,
+    magnitude_dim,
+    magnitude_dim_max,
+    spread,
+    spread_dim,
+    spread_dim_max,
+)
 from magnispread.metrics import pairwise_cosine_distance
 
 FUNCTIONS = [magnitude, magnitude_dim, spread, spread_dim]
 JITTER_SOLVER_FUNCTIONS = [magnitude, magnitude_dim]
+MAX_FUNCTIONS = [magnitude_dim_max, spread_dim_max]
+JITTER_SOLVER_MAX_FUNCTIONS = [magnitude_dim_max]
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +70,112 @@ def test_rejects_invalid_solver(function):
     X = torch.randn(4, 3)
     with pytest.raises(ValueError, match="`solver`"):
         function(X, solver="svd")
+
+
+# ---------------------------------------------------------------------------
+# Shared input validation for the scale-agnostic ("_max") functions. These
+# have no `scale` parameter, so the validation tests above that pass
+# `scale=...` don't apply, but the rest of `validate_inputs`'s checks do.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+def test_max_functions_reject_non_2d_input(function):
+    X = torch.randn(4, 3, 2)
+    with pytest.raises(ValueError, match="2D"):
+        function(X)
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+def test_max_functions_reject_empty_point_cloud(function):
+    X = torch.randn(0, 4)
+    with pytest.raises(ValueError, match="at least one point"):
+        function(X)
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+def test_max_functions_reject_invalid_metric(function):
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="metric"):
+        function(X, metric="manhattan")
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+def test_max_functions_precomputed_requires_square_matrix(function):
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="square"):
+        function(X, metric="precomputed")
+
+
+@pytest.mark.parametrize("function", JITTER_SOLVER_MAX_FUNCTIONS)
+def test_max_functions_reject_negative_jitter(function):
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="`jitter`"):
+        function(X, jitter=-1e-6)
+
+
+@pytest.mark.parametrize("function", JITTER_SOLVER_MAX_FUNCTIONS)
+def test_max_functions_reject_invalid_solver(function):
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="`solver`"):
+        function(X, solver="svd")
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+def test_max_functions_reject_invalid_search_params(function):
+    X = torch.randn(4, 3)
+    with pytest.raises(ValueError, match="`t_min`"):
+        function(X, t_min=-1.0)
+    with pytest.raises(ValueError, match="`t_max`"):
+        function(X, t_min=1.0, t_max=0.5)
+    with pytest.raises(ValueError, match="`num_coarse_steps`"):
+        function(X, num_coarse_steps=2)
+    with pytest.raises(ValueError, match="`max_refine_iter`"):
+        function(X, max_refine_iter=-1)
+    with pytest.raises(ValueError, match="`log_tol`"):
+        function(X, log_tol=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Scale-agnostic ("_max") functions: return shape and gradient behavior.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+@pytest.mark.parametrize("metric", ["euclidean", "cosine"])
+def test_max_functions_return_dim_max_result(function, metric):
+    X = torch.randn(8, 4)
+
+    result = function(X, metric=metric, t_min=1e-3, t_max=1e3)
+
+    assert isinstance(result, DimMaxResult)
+    assert result.dim.ndim == 0
+    assert torch.isfinite(result.dim)
+    assert isinstance(result.scale, float)
+    assert 1e-3 <= result.scale <= 1e3
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+@pytest.mark.parametrize("metric", ["euclidean", "cosine"])
+def test_max_functions_support_backward(function, metric):
+    X = torch.randn(8, 4, requires_grad=True)
+
+    result = function(X, metric=metric)
+    result.dim.backward()
+
+    assert X.grad is not None
+    assert torch.isfinite(X.grad).all()
+
+
+@pytest.mark.parametrize("function", MAX_FUNCTIONS)
+def test_max_functions_warn_on_boundary_search_range(function):
+    # The 2-point space's magnitude/spread dimension peaks around t ~= 1.28
+    # (see test_math_correctness.py), far below this deliberately narrow,
+    # high search range.
+    X = torch.tensor([[0.0, 0.0], [1.0, 0.0]])
+
+    with pytest.warns(UserWarning, match="boundary"):
+        function(X, t_min=50.0, t_max=100.0)
 
 
 # ---------------------------------------------------------------------------
